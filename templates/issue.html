@@ -1,0 +1,29 @@
+{% extends "base.html" %}{% block content %}
+<h2>#{{ issue.id }} <span id="title">{{ issue.title }}</span></h2>
+<p>{{ issue.category }} · <span class="sev-{{ issue.severity }}">{{ issue.severity }}</span> · {{ issue.status }}
+  · reported by {{ issue.reporter }} ({{ languages.get(issue.original_language, issue.original_language) }}) · {{ issue.created_at }}</p>
+<p id="desc" class="card">{{ issue.description }}</p>
+<p>
+  <label>Translate to
+    <select id="tlang">{% for c, n in languages.items() %}<option value="{{ c }}" {{ 'selected' if c == g.user.language }}>{{ n }}</option>{% endfor %}</select>
+  </label>
+  <button id="tbtn" type="button">Translate</button>
+</p>
+
+{% if g.user.role in STAFF_ROLES %}
+<form method="post" action="{{ url_for('set_status', issue_id=issue.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <select name="status">{% for s in STATUSES %}<option {{ 'selected' if s == issue.status }}>{{ s }}</option>{% endfor %}</select>
+  <button>Update status</button>
+</form>
+{% endif %}
+
+<h3>Comments</h3>
+{% for c in comments %}<div class="card"><b>{{ c.username }}</b> <small>{{ c.created_at }}</small><p class="cbody">{{ c.body }}</p></div>{% endfor %}
+<form method="post" action="{{ url_for('add_comment', issue_id=issue.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <textarea name="body" required rows="3"></textarea>
+  <button>Add comment</button>
+</form>
+<script src="{{ url_for('static', filename='issue.js') }}"></script>
+{% endblock %}

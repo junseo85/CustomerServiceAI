@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% block content %}
+<h2>{{ 'All reported issues' if g.user.role in STAFF_ROLES else 'My reported issues' }}</h2>
+<form method="get" class="filters">
+  {% for name, opts in (('status', STATUSES), ('category', CATEGORIES), ('severity', SEVERITIES)) %}
+  <select name="{{ name }}"><option value="">any {{ name }}</option>
+    {% for o in opts %}<option value="{{ o }}" {{ 'selected' if request.args.get(name) == o }}>{{ o }}</option>{% endfor %}
+  </select>
+  {% endfor %}
+  <button>Filter</button>
+</form>
+<table>
+  <tr><th>#</th><th>Title</th><th>Category</th><th>Severity</th><th>Status</th><th>Reporter</th><th>Created</th></tr>
+  {% for i in issues %}
+  <tr>
+    <td>{{ i.id }}</td><td><a href="{{ url_for('issue_detail', issue_id=i.id) }}">{{ i.title }}</a></td>
+    <td>{{ i.category }}</td><td class="sev-{{ i.severity }}">{{ i.severity }}</td>
+    <td>{{ i.status }}</td><td>{{ i.reporter }}</td><td>{{ i.created_at }}</td>
+  </tr>
+  {% else %}<tr><td colspan="7">No issues.</td></tr>{% endfor %}
+</table>
+{% endblock %}

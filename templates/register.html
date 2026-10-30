@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% block content %}
+<h2>Create account</h2>
+<form method="post" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>Username <input name="username" required></label>
+  <label>Password (8+ chars) <input name="password" type="password" minlength="8" required></label>
+  <label>Preferred language
+    <select name="language">{% for c, n in languages.items() %}<option value="{{ c }}">{{ n }}</option>{% endfor %}</select>
+  </label>
+  <button>Register</button>
+</form>
+{% endblock %}

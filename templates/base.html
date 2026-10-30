@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>Issue Reporter</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<nav>
+  <strong>Issue Reporter</strong>
+  {% if g.user %}
+    <a href="{{ url_for('chat_page') }}">Report</a>
+    <a href="{{ url_for('issues') }}">{{ 'All issues' if g.user.role in STAFF_ROLES else 'My issues' }}</a>
+    <span class="spacer"></span>
+    <span>{{ g.user.username }} ({{ g.user.role }})</span>
+    <form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button>Log out</button></form>
+  {% endif %}
+</nav>
+<main>
+  {% for m in get_flashed_messages() %}<p class="flash">{{ m }}</p>{% endfor %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

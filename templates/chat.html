@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% block content %}
+<h2>Report an issue</h2>
+<label>Chat language
+  <select id="lang">{% for c, n in languages.items() %}<option value="{{ c }}" {{ 'selected' if c == g.user.language }}>{{ n }}</option>{% endfor %}</select>
+</label>
+<div id="log" class="chatlog" aria-live="polite"></div>
+<form id="form" class="chatform">
+  <input id="msg" autocomplete="off" placeholder="Describe the problem in your language..." required>
+  <button>Send</button>
+</form>
+<script src="{{ url_for('static', filename='chat.js') }}"></script>
+{% endblock %}

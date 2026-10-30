@@ -1,0 +1,16 @@
+body { font-family: system-ui, sans-serif; margin: 0; background: #f5f6f8; color: #222; }
+nav { display: flex; gap: 1rem; align-items: center; padding: .75rem 1.5rem; background: #1f2937; color: #fff; }
+nav a { color: #cbd5e1; } nav .spacer { flex: 1; } nav form { margin: 0; }
+main { max-width: 960px; margin: 1.5rem auto; padding: 0 1rem; }
+.card { background: #fff; padding: 1rem; border-radius: 8px; margin: .75rem 0; display: block; }
+label { display: block; margin: .5rem 0; } input, select, textarea { padding: .4rem; max-width: 100%; }
+textarea { width: 100%; box-sizing: border-box; }
+table { width: 100%; border-collapse: collapse; background: #fff; }
+th, td { text-align: left; padding: .5rem; border-bottom: 1px solid #e5e7eb; }
+.flash { background: #fef3c7; padding: .5rem 1rem; border-radius: 6px; }
+.chatlog { background: #fff; height: 50vh; overflow-y: auto; padding: 1rem; border-radius: 8px; margin: .75rem 0; }
+.bubble { padding: .5rem .8rem; margin: .4rem 0; border-radius: 12px; max-width: 75%; white-space: pre-wrap; }
+.bubble.user { background: #2563eb; color: #fff; margin-left: auto; } .bubble.assistant { background: #e5e7eb; }
+.chatform { display: flex; gap: .5rem; } .chatform input { flex: 1; }
+.sev-critical { color: #b91c1c; font-weight: 700; } .sev-high { color: #c2410c; font-weight: 600; }
+.filters { margin-bottom: 1rem; display: flex; gap: .5rem; }

@@ -139,12 +139,15 @@ def create_app(config=None):
             return jsonify(error="invalid request"), 400
         try:
             result = ai.chat(msgs, lang)
+        except ai.AINotConfigured as e:
+            return jsonify(error=str(e)), 503
         except Exception as e:  # network/API/parse failures
             app.logger.exception("AI error: %s", e)
             return jsonify(error="AI service unavailable"), 502
         out = {"reply": result["reply"], "ready": result["ready"]}
         if result["ready"]:
             i = result["issue"]
+            lang = result.get("language") or lang
             transcript = json.dumps(msgs + [{"role": "assistant", "content": result["reply"]}],
                                     ensure_ascii=False)
             cur = get_db().execute(
@@ -164,6 +167,8 @@ def create_app(config=None):
             return jsonify(error="unsupported language"), 400
         try:
             return jsonify(text=ai.translate(text, lang))
+        except ai.AINotConfigured as e:
+            return jsonify(error=str(e)), 503
         except Exception as e:
             app.logger.exception("Translate error: %s", e)
             return jsonify(error="AI service unavailable"), 502

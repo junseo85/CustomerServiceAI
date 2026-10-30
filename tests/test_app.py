@@ -5,6 +5,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 os.environ.pop("OPENAI_API_KEY", None)
+os.environ["AI_MOCK"] = "1"
 
 from app import create_app  # noqa: E402
 

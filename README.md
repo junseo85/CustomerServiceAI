@@ -6,7 +6,7 @@ report, and lets IT / QA / managers review, translate, comment on, and triage is
 ## Run
 ```
 pip install -r requirements.txt
-cp .env.example .env      # set OPENAI_API_KEY (any OpenAI-compatible API); empty = offline mock AI
+cp .env.example .env      # set OPENAI_API_KEY (any OpenAI-compatible API); required for chat and translation
 python app.py
 ```
 Demo logins (when `SEED_DEMO=1`): `employee`, `it`, `qa`, `manager`, password `password`. Change/disable before deploying.

@@ -1,5 +1,6 @@
 const csrf = document.querySelector('meta[name=csrf-token]').content;
-const originals = {};
+const targets = [...document.querySelectorAll('#title, #desc, .cbody')];
+const originals = new Map(targets.map((el) => [el, el.textContent]));
 
 async function tr(text, language) {
   const r = await fetch('/api/translate', {
@@ -14,14 +15,11 @@ async function tr(text, language) {
 
 document.getElementById('tbtn').addEventListener('click', async () => {
   const language = document.getElementById('tlang').value;
-  const targets = [...document.querySelectorAll('#title, #desc, .cbody')];
   const btn = document.getElementById('tbtn');
   btn.disabled = true;
   try {
-    for (const el of targets) {
-      originals[el.id || el.textContent] ??= el.textContent;
-      el.textContent = await tr(el.textContent, language);
-    }
+    // Always translate from the original text so repeated clicks don't compound.
+    for (const el of targets) el.textContent = await tr(originals.get(el), language);
   } catch (e) {
     alert(e.message);
   } finally {

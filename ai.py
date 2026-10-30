@@ -13,13 +13,14 @@ LANGUAGES = {
     "hi": "Hindi", "ru": "Russian", "tl": "Tagalog",
 }
 
-SYSTEM_PROMPT = """You are a friendly workplace issue-reporting assistant. The user speaks {lang_name} (code {lang}).
-Always reply in {lang_name}. Interview the user briefly (one or two questions at a time) to learn:
+SYSTEM_PROMPT = """You are a friendly workplace issue-reporting assistant. The user's selected UI language is {lang_name} (code {lang}), but ignore it if they write in another language.
+Detect the language of the user's latest message and ALWAYS reply in that same language. Interview the user briefly (one or two questions at a time) to learn:
 what happened, where/which system, when, impact, and urgency. Once you have enough detail,
 finish by returning the final report.
 
 Respond ONLY with JSON of this shape:
-{{"reply": "<message to user in {lang_name}>",
+{{"reply": "<message in the user's language>",
+  "language": "<ISO 639-1 code of the user's language>",
   "ready": <true when enough info was collected, else false>,
   "issue": {{"title": "<English, <=80 chars>", "description": "<English, full detail>",
              "category": "one of {categories}", "severity": "one of {severities}"}} }}
@@ -38,8 +39,17 @@ def _chat(messages, json_mode=False):
     return r.json()["choices"][0]["message"]["content"]
 
 
+class AINotConfigured(Exception):
+    pass
+
+
 def mock_enabled():
-    return not os.environ.get("OPENAI_API_KEY")
+    return os.environ.get("AI_MOCK") == "1"
+
+
+def _require_key():
+    if not os.environ.get("OPENAI_API_KEY"):
+        raise AINotConfigured("AI is not configured: set OPENAI_API_KEY in .env and restart the server")
 
 
 def _parse_json(text):
@@ -59,13 +69,16 @@ def _normalize(data):
         }
     else:
         issue = None
-    return {"reply": str(data.get("reply", "")), "ready": ready, "issue": issue}
+    lang = data.get("language")
+    return {"reply": str(data.get("reply", "")), "ready": ready, "issue": issue,
+            "language": lang if lang in LANGUAGES else None}
 
 
 def chat(messages, lang):
     """messages: [{role: user|assistant, content}]. Returns {reply, ready, issue}."""
     if mock_enabled():
         return _mock_chat(messages)
+    _require_key()
     system = SYSTEM_PROMPT.format(lang_name=LANGUAGES.get(lang, lang), lang=lang,
                                   categories=CATEGORIES, severities=SEVERITIES)
     out = _chat([{"role": "system", "content": system}] + messages, json_mode=True)
@@ -77,6 +90,7 @@ def translate(text, target_lang):
         return text
     if mock_enabled():
         return f"[{target_lang}] {text}"
+    _require_key()
     name = LANGUAGES.get(target_lang, target_lang)
     return _chat([
         {"role": "system", "content": f"Translate the user's text to {name}. Output only the translation."},
@@ -89,9 +103,9 @@ def _mock_chat(messages):
     user_msgs = [m["content"] for m in messages if m["role"] == "user"]
     if len(user_msgs) < 2:
         return {"reply": "(mock AI) Thanks. Where did this happen, and how urgent is it?",
-                "ready": False, "issue": None}
+                "ready": False, "issue": None, "language": None}
     text = " ".join(user_msgs)
     sev = "high" if re.search(r"urgent|down|fire|injur|critical", text, re.I) else "medium"
     return {"reply": "(mock AI) Thank you, I've filed your report.", "ready": True,
             "issue": {"title": user_msgs[0][:80], "description": text,
-                      "category": "other", "severity": sev}}
+                      "category": "other", "severity": sev}, "language": None}

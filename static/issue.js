@@ -28,3 +28,12 @@ document.getElementById('tbtn').addEventListener('click', async () => {
     btn.disabled = false;
   }
 });
+
+const lb = document.getElementById('lb');
+document.querySelectorAll('[data-lightbox]').forEach((a) => a.addEventListener('click', (e) => {
+  e.preventDefault();
+  lb.querySelector('img').src = a.href;
+  lb.classList.add('open');
+}));
+lb.addEventListener('click', () => lb.classList.remove('open'));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') lb.classList.remove('open'); });

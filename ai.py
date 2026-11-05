@@ -62,10 +62,21 @@ def _normalize(data):
     return {"reply": str(data.get("reply", "")), "ready": ready, "issue": issue}
 
 
-def chat(messages, lang):
-    """messages: [{role: user|assistant, content}]. Returns {reply, ready, issue}."""
+def status():
+    return {"mode": "mock" if mock_enabled() else "live",
+            "model": None if mock_enabled() else os.environ.get("OPENAI_MODEL", "gpt-4o-mini")}
+
+
+def chat(messages, lang, images=None):
+    """messages: [{role: user|assistant, content}]. images: data URLs attached to the last user
+    message (sent to vision-capable models). Returns {reply, ready, issue}."""
     if mock_enabled():
-        return _mock_chat(messages)
+        return _mock_chat(messages, bool(images))
+    if images:
+        last = dict(messages[-1])
+        last["content"] = [{"type": "text", "text": last["content"]}] + [
+            {"type": "image_url", "image_url": {"url": u}} for u in images]
+        messages = messages[:-1] + [last]
     system = SYSTEM_PROMPT.format(lang_name=LANGUAGES.get(lang, lang), lang=lang,
                                   categories=CATEGORIES, severities=SEVERITIES)
     out = _chat([{"role": "system", "content": system}] + messages, json_mode=True)
@@ -84,11 +95,13 @@ def translate(text, target_lang):
     ]).strip()
 
 
-def _mock_chat(messages):
+def _mock_chat(messages, has_images=False):
     """Offline stand-in: asks one follow-up, then files the report."""
     user_msgs = [m["content"] for m in messages if m["role"] == "user"]
     if len(user_msgs) < 2:
-        return {"reply": "(mock AI) Thanks. Where did this happen, and how urgent is it?",
+        return {"reply": "(mock AI) Thanks"
+                 + (", I can see your attachment" if has_images else "")
+                 + ". Where did this happen, and how urgent is it?",
                 "ready": False, "issue": None}
     text = " ".join(user_msgs)
     sev = "high" if re.search(r"urgent|down|fire|injur|critical", text, re.I) else "medium"

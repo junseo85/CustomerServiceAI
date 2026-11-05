@@ -9,13 +9,13 @@
 </head>
 <body>
 <nav>
-  <strong>Issue Reporter</strong>
+  <a class="brand" href="{{ url_for('chat_page') }}"><span class="logo">✦</span>Issue Reporter</a>
   {% if g.user %}
-    <a href="{{ url_for('chat_page') }}">Report</a>
-    <a href="{{ url_for('issues') }}">{{ 'All issues' if g.user.role in STAFF_ROLES else 'My issues' }}</a>
+    <a class="link {{ 'active' if request.endpoint == 'chat_page' }}" href="{{ url_for('chat_page') }}">Report</a>
+    <a class="link {{ 'active' if request.endpoint in ('issues', 'issue_detail') }}" href="{{ url_for('issues') }}">{{ 'All issues' if g.user.role in STAFF_ROLES else 'My issues' }}</a>
     <span class="spacer"></span>
-    <span>{{ g.user.username }} ({{ g.user.role }})</span>
-    <form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button>Log out</button></form>
+    <span class="userbox"><span class="avatar">{{ g.user.username[0] }}</span><span class="name">{{ g.user.username }}</span><span class="badge">{{ g.user.role }}</span></span>
+    <form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="ghost">Log out</button></form>
   {% endif %}
 </nav>
 <main>

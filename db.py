@@ -30,6 +30,16 @@ CREATE TABLE IF NOT EXISTS comments (
     body TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS attachments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    issue_id INTEGER REFERENCES issues(id),
+    uploader_id INTEGER NOT NULL REFERENCES users(id),
+    filename TEXT NOT NULL,
+    stored_name TEXT NOT NULL,
+    mime TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 CATEGORIES = ["hardware", "software", "network", "access", "quality", "safety", "other"]

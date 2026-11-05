@@ -1,12 +1,31 @@
 {% extends "base.html" %}{% block content %}
-<h2>Report an issue</h2>
-<label>Chat language
-  <select id="lang">{% for c, n in languages.items() %}<option value="{{ c }}" {{ 'selected' if c == g.user.language }}>{{ n }}</option>{% endfor %}</select>
-</label>
-<div id="log" class="chatlog" aria-live="polite"></div>
-<form id="form" class="chatform">
-  <input id="msg" autocomplete="off" placeholder="Describe the problem in your language..." required>
-  <button>Send</button>
-</form>
+<div class="chat-head">
+  <div>
+    <h2>Report an issue</h2>
+    <span class="muted">Describe the problem in your language. Attach screenshots and they'll be added to the ticket.</span>
+  </div>
+  <div style="display:flex;gap:1rem;align-items:flex-end">
+    <span class="ai-pill {{ 'mock' if ai_status.mode == 'mock' }}" title="{{ ai_status.model or 'Offline demo AI' }}">{{ 'AI: demo mode' if ai_status.mode == 'mock' else 'AI: ' ~ ai_status.model }}</span>
+    <label>Language
+      <select id="lang">{% for c, n in languages.items() %}<option value="{{ c }}" {{ 'selected' if c == g.user.language }}>{{ n }}</option>{% endfor %}</select>
+    </label>
+  </div>
+</div>
+<div class="chatbox" id="chatbox">
+  <div class="dropzone">Drop screenshots or files to attach</div>
+  <div id="log" class="chatlog" aria-live="polite">
+    <div class="bubble assistant">Hi! Tell me what went wrong. You can paste (Ctrl+V), drag in, or 📎 attach a screenshot.</div>
+  </div>
+  <div id="tray" class="tray"></div>
+  <form id="form" class="composer">
+    <input type="file" id="file" multiple hidden accept="image/png,image/jpeg,image/gif,image/webp,.pdf,.txt,.log">
+    <button type="button" class="icon-btn" id="attach" title="Attach file" aria-label="Attach file">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.4 11.1l-9.2 9.2a6 6 0 01-8.5-8.5l9.2-9.2a4 4 0 115.7 5.7l-9.2 9.2a2 2 0 01-2.8-2.8l8.5-8.5"/></svg>
+    </button>
+    <input type="text" id="msg" autocomplete="off" placeholder="Describe the problem..." >
+    <button class="send">Send</button>
+  </form>
+</div>
+<p class="hint">Images, PDF, TXT or LOG · up to 10 MB each · max 5 files</p>
 <script src="{{ url_for('static', filename='chat.js') }}"></script>
 {% endblock %}

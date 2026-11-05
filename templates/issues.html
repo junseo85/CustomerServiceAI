@@ -1,21 +1,30 @@
 {% extends "base.html" %}{% block content %}
 <h2>{{ 'All reported issues' if g.user.role in STAFF_ROLES else 'My reported issues' }}</h2>
+<span class="muted">{{ issues|length }} issue{{ '' if issues|length == 1 else 's' }}</span>
 <form method="get" class="filters">
   {% for name, opts in (('status', STATUSES), ('category', CATEGORIES), ('severity', SEVERITIES)) %}
-  <select name="{{ name }}"><option value="">any {{ name }}</option>
-    {% for o in opts %}<option value="{{ o }}" {{ 'selected' if request.args.get(name) == o }}>{{ o }}</option>{% endfor %}
+  <select name="{{ name }}"><option value="">Any {{ name }}</option>
+    {% for o in opts %}<option value="{{ o }}" {{ 'selected' if request.args.get(name) == o }}>{{ o.replace('_', ' ') }}</option>{% endfor %}
   </select>
   {% endfor %}
   <button>Filter</button>
+  <a class="btn ghost" style="padding:.55rem 1rem;border:1px solid var(--line);color:var(--muted);background:transparent" href="{{ url_for('issues') }}">Reset</a>
 </form>
+<div class="table-wrap">
 <table>
-  <tr><th>#</th><th>Title</th><th>Category</th><th>Severity</th><th>Status</th><th>Reporter</th><th>Created</th></tr>
+  <thead><tr><th>#</th><th>Title</th><th>Category</th><th>Severity</th><th>Status</th><th>Reporter</th><th>Created</th></tr></thead>
+  <tbody>
   {% for i in issues %}
   <tr>
-    <td>{{ i.id }}</td><td><a href="{{ url_for('issue_detail', issue_id=i.id) }}">{{ i.title }}</a></td>
-    <td>{{ i.category }}</td><td class="sev-{{ i.severity }}">{{ i.severity }}</td>
-    <td>{{ i.status }}</td><td>{{ i.reporter }}</td><td>{{ i.created_at }}</td>
+    <td class="muted">{{ i.id }}</td>
+    <td class="title"><a href="{{ url_for('issue_detail', issue_id=i.id) }}">{{ i.title }}</a>{% if i.att_count %}<span class="clip" title="{{ i.att_count }} attachment(s)">📎 {{ i.att_count }}</span>{% endif %}</td>
+    <td><span class="badge">{{ i.category }}</span></td>
+    <td><span class="badge sev-{{ i.severity }}">{{ i.severity }}</span></td>
+    <td><span class="badge st-{{ i.status }}">{{ i.status.replace('_', ' ') }}</span></td>
+    <td>{{ i.reporter }}</td><td class="muted">{{ i.created_at }}</td>
   </tr>
-  {% else %}<tr><td colspan="7">No issues.</td></tr>{% endfor %}
+  {% else %}<tr><td colspan="7" class="empty">No issues yet.</td></tr>{% endfor %}
+  </tbody>
 </table>
+</div>
 {% endblock %}

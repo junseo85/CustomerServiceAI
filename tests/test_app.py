@@ -11,7 +11,8 @@ from app import create_app  # noqa: E402
 
 @pytest.fixture
 def app(tmp_path):
-    return create_app({"DATABASE": str(tmp_path / "t.db"), "SEED_DEMO": True, "TESTING": True})
+    return create_app({"DATABASE": str(tmp_path / "t.db"), "SEED_DEMO": True, "TESTING": True,
+                       "UPLOAD_DIR": str(tmp_path / "up")})
 
 
 def login(client, user):
@@ -70,3 +71,42 @@ def test_staff_status_and_translate(app):
     r = qa.post("/api/translate", json={"text": "hello", "language": "es"}, headers=h)
     assert r.json["text"].startswith("[es]")
     assert qa.post("/api/translate", json={"text": "x", "language": "zz"}, headers=h).status_code == 400
+
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 32
+
+
+def upload(c, h, name="shot.png", data=PNG):
+    import io
+    return c.post("/api/attachments", data={"file": (io.BytesIO(data), name)}, headers=h,
+                  content_type="multipart/form-data")
+
+
+def test_attachment_flow_linked_to_ticket_and_access_controlled(app):
+    emp, other, it = app.test_client(), app.test_client(), app.test_client()
+    h = login(emp, "employee")
+    r = upload(emp, h)
+    assert r.status_code == 201
+    att = r.json
+    assert emp.get(att["url"]).status_code == 200
+    ho = login(other, "qa")
+    assert other.get(att["url"]).status_code == 404  # pending upload is private
+    msgs = [{"role": "user", "content": "Printer down"}]
+    r1 = emp.post("/api/chat", json={"messages": msgs, "language": "en", "attachment_ids": [att["id"]],
+                                    "new_attachment_ids": [att["id"]]}, headers=h)
+    msgs += [{"role": "assistant", "content": r1.json["reply"]}, {"role": "user", "content": "urgent"}]
+    r2 = emp.post("/api/chat", json={"messages": msgs, "language": "en", "attachment_ids": [att["id"]]}, headers=h)
+    iid = r2.json["issue_id"]
+    assert b"shot.png" in emp.get(f"/issues/{iid}").data
+    assert other.get(att["url"]).status_code == 200  # staff can view
+    login(it, "it")
+    assert it.get(att["url"]).headers["X-Content-Type-Options"] == "nosniff"
+
+
+def test_upload_validation(app):
+    c = app.test_client()
+    h = login(c, "employee")
+    assert upload(c, h, "evil.exe", b"MZ").status_code == 400
+    assert upload(c, h, "fake.png", b"<html>").status_code == 400
+    assert upload(c, h, "big.png", PNG + b"0" * (11 * 1024 * 1024)).status_code == 413
+    assert app.test_client().post("/api/attachments").status_code in (400, 401)

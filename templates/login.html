@@ -1,10 +1,14 @@
 {% extends "base.html" %}{% block content %}
-<h2>Log in</h2>
+<div class="auth">
+<h2>Welcome back</h2>
+<p class="muted" style="text-align:center">Sign in to report and track issues.</p>
 <form method="post" class="card">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-  <label>Username <input name="username" required></label>
+  <label>Username <input name="username" required autofocus></label>
   <label>Password <input name="password" type="password" required></label>
   <button>Log in</button>
   <p><a href="{{ url_for('register') }}">Create employee account</a></p>
 </form>
+<p class="demo">Demo accounts: employee · it · qa · manager (password: <code>password</code>)</p>
+</div>
 {% endblock %}

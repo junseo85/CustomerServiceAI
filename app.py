@@ -1,11 +1,13 @@
+import base64
 import json
 import os
 import secrets
+import uuid
 from functools import wraps
 
 from dotenv import load_dotenv
 from flask import (Flask, abort, flash, g, jsonify, redirect, render_template, request,
-                   session, url_for)
+                   send_from_directory, session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import ai
@@ -14,18 +16,36 @@ import db
 load_dotenv()
 
 
+# extension -> (mime, magic-byte prefixes); content is verified, never trusting client headers
+ALLOWED_UPLOADS = {
+    "png": ("image/png", (b"\x89PNG\r\n\x1a\n",)),
+    "jpg": ("image/jpeg", (b"\xff\xd8\xff",)),
+    "jpeg": ("image/jpeg", (b"\xff\xd8\xff",)),
+    "gif": ("image/gif", (b"GIF87a", b"GIF89a")),
+    "webp": ("image/webp", (b"RIFF",)),
+    "pdf": ("application/pdf", (b"%PDF",)),
+    "txt": ("text/plain", None),
+    "log": ("text/plain", None),
+}
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+MAX_FILES_PER_REPORT = 5
+
+
 def create_app(config=None):
     app = Flask(__name__)
     app.config.update(
         SECRET_KEY=os.environ.get("SECRET_KEY", "dev-only-change-me"),
         DATABASE=os.environ.get("DATABASE", "issues.db"),
         SEED_DEMO=os.environ.get("SEED_DEMO", "0") == "1",
+        UPLOAD_DIR=os.environ.get("UPLOAD_DIR", "uploads"),
+        MAX_CONTENT_LENGTH=MAX_UPLOAD_BYTES + 1024 * 1024,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
     )
     if config:
         app.config.update(config)
     db.init_db(app.config["DATABASE"], app.config["SEED_DEMO"])
+    os.makedirs(app.config["UPLOAD_DIR"], exist_ok=True)
 
     def get_db():
         if "db" not in g:
@@ -37,6 +57,10 @@ def create_app(config=None):
         conn = g.pop("db", None)
         if conn:
             conn.close()
+
+    @app.errorhandler(413)
+    def too_large(_e):
+        return jsonify(error="File too large (max 10 MB)"), 413
 
     @app.before_request
     def load_user():
@@ -55,7 +79,8 @@ def create_app(config=None):
     def inject():
         session.setdefault("csrf", secrets.token_hex(16))
         return {"csrf_token": session["csrf"], "languages": ai.LANGUAGES, "STAFF_ROLES": db.STAFF_ROLES,
-                "STATUSES": db.STATUSES, "CATEGORIES": db.CATEGORIES, "SEVERITIES": db.SEVERITIES}
+                "STATUSES": db.STATUSES, "CATEGORIES": db.CATEGORIES, "SEVERITIES": db.SEVERITIES,
+                "ai_status": ai.status()}
 
     def login_required(fn):
         @wraps(fn)
@@ -137,8 +162,23 @@ def create_app(config=None):
                 if isinstance(m, dict) and m.get("role") in ("user", "assistant") and "content" in m]
         if lang not in ai.LANGUAGES or not msgs or msgs[-1]["role"] != "user":
             return jsonify(error="invalid request"), 400
+        ids = [int(x) for x in data.get("attachment_ids", []) if str(x).isdigit()][:MAX_FILES_PER_REPORT]
+        files = []
+        if ids:
+            files = get_db().execute(
+                f"SELECT * FROM attachments WHERE issue_id IS NULL AND uploader_id=? AND id IN ({','.join('?' * len(ids))})",
+                [g.user["id"], *ids]).fetchall()
+        new_ids = {int(x) for x in data.get("new_attachment_ids", []) if str(x).isdigit()}
+        images = []
+        for f in files:
+            if f["id"] in new_ids and f["mime"].startswith("image/") and f["size"] <= 5 * 1024 * 1024:
+                with open(os.path.join(app.config["UPLOAD_DIR"], f["stored_name"]), "rb") as fh:
+                    images.append(f"data:{f['mime']};base64,{base64.b64encode(fh.read()).decode()}")
+        if new_ids and files:
+            names = ", ".join(f["filename"] for f in files if f["id"] in new_ids)
+            msgs[-1]["content"] += f"\n[User attached: {names}]"
         try:
-            result = ai.chat(msgs, lang)
+            result = ai.chat(msgs, lang, images)
         except Exception as e:  # network/API/parse failures
             app.logger.exception("AI error: %s", e)
             return jsonify(error="AI service unavailable"), 502
@@ -151,9 +191,97 @@ def create_app(config=None):
                 "INSERT INTO issues (reporter_id,title,description,category,severity,original_language,transcript)"
                 " VALUES (?,?,?,?,?,?,?)",
                 (g.user["id"], i["title"], i["description"], i["category"], i["severity"], lang, transcript))
+            if files:
+                get_db().execute(
+                    f"UPDATE attachments SET issue_id=? WHERE id IN ({','.join('?' * len(files))})",
+                    [cur.lastrowid, *[f["id"] for f in files]])
             get_db().commit()
             out["issue_id"] = cur.lastrowid
         return jsonify(out)
+
+    def attachment_json(a):
+        return {"id": a["id"], "filename": a["filename"], "mime": a["mime"], "size": a["size"],
+                "url": url_for("attachment_file", att_id=a["id"])}
+
+    @app.post("/api/attachments")
+    @login_required
+    def api_upload():
+        f = request.files.get("file")
+        if f is None or not f.filename:
+            return jsonify(error="No file provided"), 400
+        name = os.path.basename(f.filename.replace("\\", "/"))[:120] or "file"
+        ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+        if ext not in ALLOWED_UPLOADS:
+            return jsonify(error="Unsupported file type. Allowed: images, PDF, TXT, LOG"), 400
+        data = f.read(MAX_UPLOAD_BYTES + 1)
+        if len(data) > MAX_UPLOAD_BYTES:
+            return jsonify(error="File too large (max 10 MB)"), 413
+        if not data:
+            return jsonify(error="File is empty"), 400
+        mime, magics = ALLOWED_UPLOADS[ext]
+        if magics and not data.startswith(magics):
+            return jsonify(error="File content does not match its extension"), 400
+        if ext == "webp" and data[8:12] != b"WEBP":
+            return jsonify(error="File content does not match its extension"), 400
+        if not magics:
+            try:
+                data.decode("utf-8")
+            except UnicodeDecodeError:
+                return jsonify(error="File content does not match its extension"), 400
+        pending = get_db().execute(
+            "SELECT COUNT(*) FROM attachments WHERE issue_id IS NULL AND uploader_id=?",
+            (g.user["id"],)).fetchone()[0]
+        if pending >= MAX_FILES_PER_REPORT:
+            return jsonify(error=f"Max {MAX_FILES_PER_REPORT} attachments per report"), 400
+        stored = f"{uuid.uuid4().hex}.{ext}"
+        with open(os.path.join(app.config["UPLOAD_DIR"], stored), "wb") as out:
+            out.write(data)
+        cur = get_db().execute(
+            "INSERT INTO attachments (uploader_id, filename, stored_name, mime, size) VALUES (?,?,?,?,?)",
+            (g.user["id"], name, stored, mime, len(data)))
+        get_db().commit()
+        a = get_db().execute("SELECT * FROM attachments WHERE id=?", (cur.lastrowid,)).fetchone()
+        return jsonify(attachment_json(a)), 201
+
+    @app.post("/api/attachments/<int:att_id>/delete")
+    @login_required
+    def api_delete_attachment(att_id):
+        a = get_db().execute(
+            "SELECT * FROM attachments WHERE id=? AND uploader_id=? AND issue_id IS NULL",
+            (att_id, g.user["id"])).fetchone()
+        if a is None:
+            return jsonify(error="not found"), 404
+        get_db().execute("DELETE FROM attachments WHERE id=?", (att_id,))
+        get_db().commit()
+        try:
+            os.remove(os.path.join(app.config["UPLOAD_DIR"], a["stored_name"]))
+        except OSError:
+            pass
+        return jsonify(ok=True)
+
+    @app.route("/attachments/<int:att_id>")
+    @login_required
+    def attachment_file(att_id):
+        a = get_db().execute("SELECT * FROM attachments WHERE id=?", (att_id,)).fetchone()
+        if a is None:
+            abort(404)
+        if a["issue_id"] is None:
+            if a["uploader_id"] != g.user["id"]:
+                abort(404)
+        else:
+            visible_issue(a["issue_id"])
+        is_image = a["mime"].startswith("image/")
+        resp = send_from_directory(app.config["UPLOAD_DIR"], a["stored_name"], mimetype=a["mime"],
+                                   as_attachment=not is_image and a["mime"] != "application/pdf",
+                                   download_name=a["filename"])
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        resp.headers["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'"
+        return resp
+
+    @app.get("/api/ai-status")
+    @login_required
+    def api_ai_status():
+        return jsonify(ai.status())
 
     @app.post("/api/translate")
     @login_required
@@ -182,6 +310,7 @@ def create_app(config=None):
             if v in allowed:
                 q += f" AND i.{col}=?"
                 args.append(v)
+        q = q.replace("i.*,", "i.*, (SELECT COUNT(*) FROM attachments a WHERE a.issue_id=i.id) AS att_count,", 1)
         rows = get_db().execute(
             q + " ORDER BY CASE i.severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,"
                 " i.created_at DESC", args).fetchall()
@@ -194,7 +323,9 @@ def create_app(config=None):
         comments = get_db().execute(
             "SELECT c.*, u.username FROM comments c JOIN users u ON u.id=c.author_id"
             " WHERE issue_id=? ORDER BY c.id", (issue_id,)).fetchall()
-        return render_template("issue.html", issue=issue, comments=comments)
+        attachments = get_db().execute(
+            "SELECT * FROM attachments WHERE issue_id=? ORDER BY id", (issue_id,)).fetchall()
+        return render_template("issue.html", issue=issue, comments=comments, attachments=attachments)
 
     @app.post("/issues/<int:issue_id>/status")
     @staff_required

@@ -29,7 +29,9 @@ Respond ONLY with JSON of this shape:
 def _chat(messages, json_mode=False):
     key = os.environ.get("OPENAI_API_KEY")
     base = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
-    body = {"model": os.environ.get("OPENAI_MODEL", "gpt-4o-mini"), "messages": messages, "temperature": 0.2}
+    body = {"model": os.environ.get("OPENAI_MODEL", "gpt-4o-mini"), "messages": messages}
+    if os.environ.get("OPENAI_TEMPERATURE"):  # some newer models only accept the default
+        body["temperature"] = float(os.environ["OPENAI_TEMPERATURE"])
     if json_mode:
         body["response_format"] = {"type": "json_object"}
     r = requests.post(f"{base}/chat/completions", json=body, timeout=60,

@@ -49,6 +49,7 @@ STAFF_ROLES = {"it", "qa", "manager"}
 
 
 def connect(path):
+    # Use row mappings throughout the controllers and enforce declared foreign keys per connection.
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -56,6 +57,7 @@ def connect(path):
 
 
 def init_db(path, seed_demo=False):
+    # Demo accounts are inserted only when explicitly enabled and are never overwritten.
     conn = connect(path)
     conn.executescript(SCHEMA)
     if seed_demo:

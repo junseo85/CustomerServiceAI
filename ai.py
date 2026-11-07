@@ -27,6 +27,7 @@ Respond ONLY with JSON of this shape:
 
 
 def _chat(messages, json_mode=False):
+    # Shared transport for chat and translation, with provider/model configured by environment.
     key = os.environ.get("OPENAI_API_KEY")
     base = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
     body = {"model": os.environ.get("OPENAI_MODEL", "gpt-4o-mini"), "messages": messages}
@@ -72,6 +73,7 @@ def status():
 def chat(messages, lang, images=None):
     """messages: [{role: user|assistant, content}]. images: data URLs attached to the last user
     message (sent to vision-capable models). Returns {reply, ready, issue}."""
+    # The mock keeps local development usable without a provider credential.
     if mock_enabled():
         return _mock_chat(messages, bool(images))
     if images:

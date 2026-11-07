@@ -33,6 +33,7 @@ MAX_FILES_PER_REPORT = 5
 
 def create_app(config=None):
     app = Flask(__name__)
+    # Keep deployment settings overridable so tests can use isolated databases and uploads.
     app.config.update(
         SECRET_KEY=os.environ.get("SECRET_KEY", "dev-only-change-me"),
         DATABASE=os.environ.get("DATABASE", "issues.db"),
@@ -52,6 +53,7 @@ def create_app(config=None):
             g.db = db.connect(app.config["DATABASE"])
         return g.db
 
+    # A request-scoped connection is reused by its controllers and always closed afterward.
     @app.teardown_appcontext
     def close_db(_exc):
         conn = g.pop("db", None)
@@ -62,12 +64,14 @@ def create_app(config=None):
     def too_large(_e):
         return jsonify(error="File too large (max 10 MB)"), 413
 
+    # Load the signed-in user once so route guards and templates share the same identity.
     @app.before_request
     def load_user():
         g.user = None
         if "user_id" in session:
             g.user = get_db().execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
 
+    # Require a session-bound token on every state-changing form or API request.
     @app.before_request
     def csrf_protect():
         if request.method == "POST":
@@ -83,6 +87,7 @@ def create_app(config=None):
                 "ai_status": ai.status()}
 
     def login_required(fn):
+        # API callers receive a status response; browser navigation goes to the login page.
         @wraps(fn)
         def wrapper(*a, **kw):
             if g.user is None:
@@ -93,6 +98,7 @@ def create_app(config=None):
         return wrapper
 
     def staff_required(fn):
+        # Compose authentication with the separate staff-role authorization check.
         @wraps(fn)
         @login_required
         def wrapper(*a, **kw):
@@ -102,6 +108,7 @@ def create_app(config=None):
         return wrapper
 
     def visible_issue(issue_id):
+        # Resolve an issue only for staff or its reporter; hide inaccessible IDs as not found.
         issue = get_db().execute(
             "SELECT i.*, u.username AS reporter FROM issues i JOIN users u ON u.id=i.reporter_id WHERE i.id=?",
             (issue_id,)).fetchone()
@@ -112,6 +119,7 @@ def create_app(config=None):
     # ---- auth ----
     @app.route("/login", methods=["GET", "POST"])
     def login():
+        # Verify the password hash, then rotate session state to prevent session fixation.
         if request.method == "POST":
             u = get_db().execute("SELECT * FROM users WHERE username=?",
                                  (request.form.get("username", ""),)).fetchone()
@@ -125,6 +133,7 @@ def create_app(config=None):
 
     @app.route("/register", methods=["GET", "POST"])
     def register():
+        # Public registration creates employee accounts only; staff roles are not self-assignable.
         if request.method == "POST":
             name, pw = request.form.get("username", "").strip(), request.form.get("password", "")
             lang = request.form.get("language", "en")
@@ -143,6 +152,7 @@ def create_app(config=None):
 
     @app.post("/logout")
     def logout():
+        # Logout is a CSRF-protected POST and clears both identity and CSRF state.
         session.clear()
         return redirect(url_for("login"))
 
@@ -155,6 +165,7 @@ def create_app(config=None):
     @app.post("/api/chat")
     @login_required
     def api_chat():
+        # Each turn resubmits the bounded conversation; only this user's pending uploads are eligible.
         data = request.get_json(silent=True) or {}
         lang = data.get("language", g.user["language"])
         msgs = [{"role": m["role"], "content": str(m["content"])[:4000]}
@@ -184,6 +195,7 @@ def create_app(config=None):
             return jsonify(error="AI service unavailable"), 502
         out = {"reply": result["reply"], "ready": result["ready"]}
         if result["ready"]:
+            # File the completed report and link its selected uploads in the same DB transaction.
             i = result["issue"]
             transcript = json.dumps(msgs + [{"role": "assistant", "content": result["reply"]}],
                                     ensure_ascii=False)
@@ -206,6 +218,7 @@ def create_app(config=None):
     @app.post("/api/attachments")
     @login_required
     def api_upload():
+        # Validate extension and file signature before storing under an opaque server-generated name.
         f = request.files.get("file")
         if f is None or not f.filename:
             return jsonify(error="No file provided"), 400
@@ -246,6 +259,7 @@ def create_app(config=None):
     @app.post("/api/attachments/<int:att_id>/delete")
     @login_required
     def api_delete_attachment(att_id):
+        # Users may remove only their own uploads that have not yet been attached to a report.
         a = get_db().execute(
             "SELECT * FROM attachments WHERE id=? AND uploader_id=? AND issue_id IS NULL",
             (att_id, g.user["id"])).fetchone()
@@ -262,6 +276,7 @@ def create_app(config=None):
     @app.route("/attachments/<int:att_id>")
     @login_required
     def attachment_file(att_id):
+        # Pending files are private to their uploader; filed files use the parent issue's access rule.
         a = get_db().execute("SELECT * FROM attachments WHERE id=?", (att_id,)).fetchone()
         if a is None:
             abort(404)
@@ -300,6 +315,7 @@ def create_app(config=None):
     @app.route("/issues")
     @login_required
     def issues():
+        # Employees are scoped to their reports; staff can browse all issues with allowlisted filters.
         q = "SELECT i.*, u.username AS reporter FROM issues i JOIN users u ON u.id=i.reporter_id WHERE 1=1"
         args = []
         if g.user["role"] not in db.STAFF_ROLES:
@@ -319,6 +335,7 @@ def create_app(config=None):
     @app.route("/issues/<int:issue_id>")
     @login_required
     def issue_detail(issue_id):
+        # The shared visibility guard protects the issue and all data rendered from it.
         issue = visible_issue(issue_id)
         comments = get_db().execute(
             "SELECT c.*, u.username FROM comments c JOIN users u ON u.id=c.author_id"
@@ -330,6 +347,7 @@ def create_app(config=None):
     @app.post("/issues/<int:issue_id>/status")
     @staff_required
     def set_status(issue_id):
+        # Status changes are staff-only and accept only the application's defined states.
         visible_issue(issue_id)
         status = request.form.get("status")
         if status not in db.STATUSES:
@@ -342,6 +360,7 @@ def create_app(config=None):
     @app.post("/issues/<int:issue_id>/comments")
     @login_required
     def add_comment(issue_id):
+        # Both staff and the report owner may comment, but only on an issue they can view.
         visible_issue(issue_id)
         body = request.form.get("body", "").strip()[:4000]
         if body:

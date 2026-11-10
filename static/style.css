@@ -92,6 +92,7 @@ td.title a { font-weight: 600; color: var(--ink); } .empty { text-align: center;
 .composer input[type=text] { flex: 1; border-radius: 999px; padding: .7rem 1.1rem; }
 .icon-btn { width: 42px; height: 42px; padding: 0; border-radius: 50%; background: #f1f5f9; color: var(--muted); display: grid; place-items: center; }
 .icon-btn:hover { background: var(--brand-soft); color: var(--brand); }
+.icon-btn.recording { background: #fee2e2; color: #b91c1c; }
 .composer .send { border-radius: 999px; padding: .65rem 1.3rem; }
 .dropzone { position: absolute; inset: 0; background: rgba(79,70,229,.92); color: #fff; display: none; place-items: center;
   font-size: 1.2rem; font-weight: 700; z-index: 5; text-align: center; }

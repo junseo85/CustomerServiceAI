@@ -99,6 +99,27 @@ def translate(text, target_lang):
     ]).strip()
 
 
+def transcribe(audio, filename, mime, language):
+    """Transcribe a bounded recording using the configured audio API."""
+    key = os.environ.get("OPENAI_API_KEY")
+    if not key:
+        raise RuntimeError("Speech recognition requires an API key")
+    base = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+    response = requests.post(
+        f"{base}/audio/transcriptions",
+        headers={"Authorization": f"Bearer {key}"},
+        data={"model": os.environ.get("OPENAI_TRANSCRIBE_MODEL", "gpt-transcribe"),
+              "language": language},
+        files={"file": (filename, audio, mime)},
+        timeout=60,
+    )
+    response.raise_for_status()
+    text = response.json()["text"]
+    if not isinstance(text, str):
+        raise ValueError("Invalid transcription response")
+    return text.strip()
+
+
 def _mock_chat(messages, has_images=False):
     """Offline stand-in: asks one follow-up, then files the report."""
     user_msgs = [m["content"] for m in messages if m["role"] == "user"]

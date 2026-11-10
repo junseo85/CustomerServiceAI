@@ -22,10 +22,15 @@
     <button type="button" class="icon-btn" id="attach" title="Attach file" aria-label="Attach file">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.4 11.1l-9.2 9.2a6 6 0 01-8.5-8.5l9.2-9.2a4 4 0 115.7 5.7l-9.2 9.2a2 2 0 01-2.8-2.8l8.5-8.5"/></svg>
     </button>
+    <button type="button" class="icon-btn" id="voice" title="Start voice recording" aria-label="Start voice recording" aria-pressed="false" {{ 'disabled' if ai_status.mode == 'mock' }}>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v1a7 7 0 0014 0v-1M12 18v4M8 22h8"/></svg>
+    </button>
     <input type="text" id="msg" autocomplete="off" placeholder="Describe the problem..." >
     <button class="send">Send</button>
   </form>
 </div>
 <p class="hint">Images, PDF, TXT or LOG · up to 10 MB each · max 5 files</p>
+<p class="hint">Voice input sends audio to the configured AI provider for transcription. Review the text before sending. {% if ai_status.mode == 'mock' %}Voice input requires an API key.{% endif %}</p>
+<p id="voice-status" class="hint" role="status" aria-live="polite"></p>
 <script src="{{ url_for('static', filename='chat.js') }}"></script>
 {% endblock %}

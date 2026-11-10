@@ -211,6 +211,37 @@ def create_app(config=None):
             out["issue_id"] = cur.lastrowid
         return jsonify(out)
 
+    @app.post("/api/transcribe")
+    @login_required
+    def api_transcribe():
+        if ai.mock_enabled():
+            return jsonify(error="Speech recognition requires an API key"), 503
+        lang = request.form.get("language")
+        f = request.files.get("file")
+        if lang not in ai.LANGUAGES or f is None or not f.filename:
+            return jsonify(error="Audio file and valid language required"), 400
+        audio = f.read(MAX_UPLOAD_BYTES + 1)
+        if len(audio) > MAX_UPLOAD_BYTES:
+            return jsonify(error="File too large (max 10 MB)"), 413
+        if not audio:
+            return jsonify(error="Audio file is empty"), 400
+        if audio.startswith(b"\x1a\x45\xdf\xa3"):
+            filename, mime = "recording.webm", "audio/webm"
+        elif len(audio) >= 12 and audio[4:8] == b"ftyp":
+            filename, mime = "recording.mp4", "audio/mp4"
+        elif len(audio) >= 12 and audio.startswith(b"RIFF") and audio[8:12] == b"WAVE":
+            filename, mime = "recording.wav", "audio/wav"
+        else:
+            return jsonify(error="Unsupported audio format"), 400
+        try:
+            text = ai.transcribe(audio, filename, mime, lang)
+        except Exception as e:
+            app.logger.exception("Transcription error: %s", e)
+            return jsonify(error="Speech recognition service unavailable"), 502
+        if not text:
+            return jsonify(error="No speech detected. Please try again."), 422
+        return jsonify(text=text)
+
     def attachment_json(a):
         return {"id": a["id"], "filename": a["filename"], "mime": a["mime"], "size": a["size"],
                 "url": url_for("attachment_file", att_id=a["id"])}

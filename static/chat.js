@@ -98,9 +98,107 @@ box.addEventListener('dragleave', () => { if (--depth <= 0) { depth = 0; box.cla
 box.addEventListener('dragover', (e) => e.preventDefault());
 box.addEventListener('drop', (e) => { e.preventDefault(); depth = 0; box.classList.remove('dragging'); addFiles(e.dataTransfer.files); });
 
+const voice = $('voice'), voiceStatus = $('voice-status'), send = form.querySelector('.send');
+let voiceBusy = false;
+let recorder = null;
+let voiceStream = null;
+let voiceTimer = null;
+
+function setVoiceBusy(busy) {
+  voiceBusy = busy;
+  send.disabled = busy;
+  lang.disabled = busy;
+}
+
+if (!voice.disabled) {
+  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+    voice.disabled = true;
+    voiceStatus.textContent = 'Voice input requires a supported browser and HTTPS or localhost.';
+  } else {
+    voice.onclick = async () => {
+      if (recorder && recorder.state === 'recording') {
+        recorder.stop();
+        return;
+      }
+      if (voiceBusy) return;
+      const type = ['audio/webm', 'audio/mp4'].find((t) => MediaRecorder.isTypeSupported(t));
+      if (!type) {
+        voiceStatus.textContent = 'This browser cannot record a supported audio format.';
+        return;
+      }
+      setVoiceBusy(true);
+      voice.disabled = true;
+      voiceStatus.textContent = 'Waiting for microphone permission…';
+      try {
+        voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const recordingLanguage = lang.value;
+        const chunks = [];
+        let size = 0, recordingError = '';
+        recorder = new MediaRecorder(voiceStream, { mimeType: type });
+        recorder.ondataavailable = (event) => {
+          if (!event.data.size) return;
+          size += event.data.size;
+          if (size > 10 * 1024 * 1024) {
+            recordingError = 'Recording exceeds 10 MB. Please try a shorter recording.';
+            if (recorder.state === 'recording') recorder.stop();
+          } else {
+            chunks.push(event.data);
+          }
+        };
+        recorder.onerror = () => { recordingError = 'Recording failed. Please try again.'; };
+        recorder.onstop = async () => {
+          clearTimeout(voiceTimer);
+          voiceStream.getTracks().forEach((track) => track.stop());
+          voiceStream = null;
+          recorder = null;
+          voice.classList.remove('recording');
+          voice.setAttribute('aria-pressed', 'false');
+          voice.setAttribute('aria-label', 'Start voice recording');
+          voice.title = 'Start voice recording';
+          voice.disabled = true;
+          try {
+            if (recordingError) throw new Error(recordingError);
+            if (!size) throw new Error('Recording is empty. Please try again.');
+            voiceStatus.textContent = 'Transcribing…';
+            const fd = new FormData();
+            fd.append('file', new Blob(chunks, { type }), type === 'audio/webm' ? 'recording.webm' : 'recording.mp4');
+            fd.append('language', recordingLanguage);
+            const r = await fetch('/api/transcribe', { method: 'POST', headers: { 'X-CSRF-Token': csrf }, body: fd });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Transcription failed');
+            input.value = [input.value.trim(), data.text].filter(Boolean).join(' ');
+            input.focus();
+            voiceStatus.textContent = 'Transcription added. Review it before sending.';
+          } catch (err) {
+            voiceStatus.textContent = err.message || 'Transcription failed.';
+          } finally {
+            voice.disabled = false;
+            setVoiceBusy(false);
+          }
+        };
+        recorder.start(1000);
+        voice.disabled = false;
+        voice.classList.add('recording');
+        voice.setAttribute('aria-pressed', 'true');
+        voice.setAttribute('aria-label', 'Stop voice recording');
+        voice.title = 'Stop voice recording';
+        voiceStatus.textContent = 'Recording… Press the microphone again to stop (maximum 2 minutes).';
+        voiceTimer = setTimeout(() => { if (recorder?.state === 'recording') recorder.stop(); }, 120000);
+      } catch (err) {
+        if (voiceStream) voiceStream.getTracks().forEach((track) => track.stop());
+        voiceStream = null;
+        recorder = null;
+        voice.disabled = false;
+        setVoiceBusy(false);
+        voiceStatus.textContent = 'Could not start recording. Check microphone permissions and try again.';
+      }
+    };
+  }
+}
+
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
-  if (uploading) return;
+  if (uploading || voiceBusy) return;
   let text = input.value.trim();
   if (!text && !pending.length) return;
   if (!text) text = 'Please see the attached file(s).';
